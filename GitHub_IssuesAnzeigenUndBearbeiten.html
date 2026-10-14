@@ -103,6 +103,9 @@
       }
       .labelbox label.on { background: #0f172a; color: #fff; border-color: #0f172a; }
       .labelbox input { display: none; }
+      .addlabel { display: flex; gap: 6px; margin-top: 6px; }
+      .addlabel input { flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: .85rem; }
+      .addlabel button { padding: 6px 12px; border: 1px solid #0f172a; background: #0f172a; color: #fff; border-radius: 6px; cursor: pointer; font-size: .85rem; }
       .formactions { display: flex; gap: 10px; align-items: center; }
       .formactions .primary { background: #0f172a; color: #fff; border: none; border-radius: 999px; padding: 8px 18px; cursor: pointer; font-size: .85rem; }
       .newform .hint { font-size: .72rem; color: #94a3b8; margin-top: 10px; }
@@ -147,6 +150,10 @@
         </label>
         <label>Labels (mehrere wählbar)
           <div class="labelbox" id="fLabels"></div>
+          <div class="addlabel">
+            <input type="text" id="fNewLabel" placeholder="Neues Label direkt anlegen" />
+            <button type="button" id="addLabelBtn">Hinzufügen</button>
+          </div>
         </label>
         <label>Übergeordnetes Issue (Sub-Issue von)
           <select id="fParent">
@@ -486,6 +493,57 @@
           fs.className = "status err";
         }
       };
+
+      async function createLabel(name) {
+        const res = await fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + "/labels", {
+          method: "POST",
+          headers: Object.assign(authHeaders(), { "Content-Type": "application/json" }),
+          body: JSON.stringify({ name: name })
+        });
+        if (!res.ok && res.status !== 422) {
+          const err = await res.json().catch(function () { return {}; });
+          throw new Error(err.message || ("HTTP " + res.status));
+        }
+      }
+
+      function addLabelChip(name) {
+        const box = document.getElementById("fLabels");
+        const existing = Array.prototype.slice.call(box.querySelectorAll("input")).find(function (c) { return c.value === name; });
+        if (existing) { existing.checked = true; existing.parentNode.classList.add("on"); return; }
+        const lab = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = name;
+        cb.checked = true;
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(" " + name));
+        lab.classList.add("on");
+        cb.onchange = function () { lab.classList.toggle("on", cb.checked); };
+        box.appendChild(lab);
+      }
+
+      async function handleAddLabel() {
+        const fs = document.getElementById("formStatus");
+        const input = document.getElementById("fNewLabel");
+        const name = input.value.trim();
+        if (!name) { fs.textContent = "Bitte einen Label-Namen eingeben."; fs.className = "status err"; return; }
+        if (!getToken()) { fs.textContent = "Kein Token hinterlegt – Label anlegen erfordert Schreibrechte."; fs.className = "status err"; return; }
+        fs.textContent = "Lege Label an…";
+        fs.className = "status";
+        try {
+          await createLabel(name);
+          addLabelChip(name);
+          input.value = "";
+          fs.textContent = "Label \"" + name + "\" angelegt und ausgewählt.";
+          fs.className = "status ok";
+        } catch (e) {
+          fs.textContent = "Fehler beim Anlegen des Labels: " + e.message;
+          fs.className = "status err";
+        }
+      }
+
+      document.getElementById("addLabelBtn").onclick = handleAddLabel;
+      document.getElementById("fNewLabel").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); handleAddLabel(); } });
 
       load();
     </script>
