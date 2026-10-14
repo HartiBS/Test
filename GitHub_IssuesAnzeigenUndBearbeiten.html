@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pilot Vitalzeichenerfassung (openEHR) – Live-Backlog</title>
+    <style>
+      :root { font-family: Inter, system-ui, -apple-system, sans-serif; color: #111827; background: #f1f5f9; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { padding: 24px; }
+      header {
+        background: #0f172a; color: #fff; border-radius: 14px; padding: 24px 28px; margin-bottom: 16px;
+        display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;
+      }
+      header h1 { font-size: 1.35rem; }
+      header .sub { color: #94a3b8; font-size: .85rem; margin-top: 4px; }
+      .kpis { display: flex; gap: 10px; flex-wrap: wrap; }
+      .kpi { background: rgba(255,255,255,.08); border-radius: 10px; padding: 8px 14px; text-align: center; }
+      .kpi b { display: block; font-size: 1.4rem; color: #38bdf8; }
+      .kpi span { font-size: .72rem; color: #cbd5e1; }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+      .toolbar button, .toolbar input {
+        border: 1px solid #cbd5e1; background: #fff; border-radius: 999px;
+        padding: 7px 14px; font-size: .85rem; color: #334155; cursor: pointer;
+      }
+      .toolbar input { cursor: text; min-width: 240px; border-radius: 10px; }
+      .toolbar button.primary { background: #0f172a; color: #fff; border-color: #0f172a; }
+      .status { font-size: .8rem; color: #64748b; }
+      .status.ok { color: #059669; }
+      .status.err { color: #dc2626; }
+      .banner {
+        display: none; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+        border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;
+        align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      }
+      .banner.show { display: flex; }
+      .banner button {
+        background: #dc2626; color: #fff; border: none; border-radius: 999px; padding: 8px 16px; cursor: pointer; font-size: .85rem;
+      }
+      .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+      .controls button {
+        border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 7px 14px; font-size: .85rem; cursor: pointer; color: #334155;
+      }
+      .controls button.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+      .board { display: flex; flex-direction: column; gap: 18px; }
+      .theme h2 { font-size: 1rem; margin-bottom: 10px; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+      .theme h2 .count { font-size: .75rem; color: #64748b; font-weight: 400; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+      .card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px;
+        cursor: pointer; transition: box-shadow .15s, transform .15s; position: relative;
+      }
+      .card:hover { box-shadow: 0 6px 18px rgba(15,23,42,.10); transform: translateY(-1px); }
+      .card .num { font-size: .72rem; color: #64748b; margin-right: 20px; }
+      .card h3 { font-size: .92rem; line-height: 1.35; margin: 4px 26px 10px 0; color: #1e293b; }
+      .card .role { font-size: .75rem; color: #475569; }
+      .card .state { font-size: .7rem; padding: 1px 8px; border-radius: 999px; display: inline-block; margin-top: 8px; }
+      .state.open { background: #dcfce7; color: #166534; }
+      .state.closed { background: #f1f5f9; color: #64748b; }
+      .dot { position: absolute; top: 14px; right: 14px; width: 10px; height: 10px; border-radius: 50%; }
+      .t1 { background: #6366f1; } .t2 { background: #0ea5e9; } .t3 { background: #f59e0b; }
+      .t4 { background: #10b981; } .t5 { background: #8b5cf6; }
+      .theme-1 h2::before, .theme-2 h2::before, .theme-3 h2::before, .theme-4 h2::before, .theme-5 h2::before {
+        content: ""; width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+      }
+      .theme-1 h2::before { background:#6366f1; } .theme-2 h2::before { background:#0ea5e9; }
+      .theme-3 h2::before { background:#f59e0b; } .theme-4 h2::before { background:#10b981; }
+      .theme-5 h2::before { background:#8b5cf6; }
+      .overlay {
+        position: fixed; inset: 0; background: rgba(15,23,42,.55);
+        display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 50; overflow-y: auto;
+      }
+      .overlay.open { display: flex; }
+      .modal { background: #fff; border-radius: 16px; max-width: 640px; width: 100%; padding: 28px 30px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+      .modal .close {
+        position: absolute; top: 14px; right: 16px; border: none; background: #f1f5f9;
+        width: 32px; height: 32px; border-radius: 50%; font-size: 1rem; cursor: pointer; color: #334155;
+      }
+      .modal .tag { font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #64748b; }
+      .modal h3 { font-size: 1.15rem; margin: 8px 0 4px; color: #0f172a; line-height: 1.35; }
+      .modal .meta { font-size: .78rem; color: #64748b; margin-bottom: 16px; }
+      .modal .meta a { color: #0284c7; }
+      .modal h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #475569; margin: 18px 0 8px; }
+      .modal p.story { font-size: .92rem; line-height: 1.55; color: #1e293b; }
+      .modal ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+      .modal ul li { font-size: .88rem; line-height: 1.5; color: #334155; padding-left: 20px; position: relative; }
+      .modal ul li::before { content: "✓"; position: absolute; left: 0; color: #10b981; font-weight: 700; }
+      footer { text-align: center; font-size: .75rem; color: #94a3b8; margin-top: 24px; line-height: 1.6; }
+      .newform { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+      .newform h2 { font-size: .95rem; color: #0f172a; margin-bottom: 12px; }
+      .formgrid { display: flex; flex-direction: column; gap: 10px; }
+      .formgrid label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: #475569; }
+      .formgrid input, .formgrid select, .formgrid textarea {
+        border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; font-size: .88rem; font-family: inherit; color: #1e293b; background: #fff;
+      }
+      .formgrid textarea { resize: vertical; }
+      .formgrid .check { flex-direction: row; align-items: center; gap: 8px; font-size: .82rem; }
+      .labelbox { display: flex; flex-wrap: wrap; gap: 6px; }
+      .labelbox label {
+        display: inline-flex; flex-direction: row; align-items: center; gap: 5px;
+        border: 1px solid #cbd5e1; border-radius: 999px; padding: 4px 10px;
+        font-size: .78rem; color: #334155; cursor: pointer; background: #fff;
+      }
+      .labelbox label.on { background: #0f172a; color: #fff; border-color: #0f172a; }
+      .labelbox input { display: none; }
+      .formactions { display: flex; gap: 10px; align-items: center; }
+      .formactions .primary { background: #0f172a; color: #fff; border: none; border-radius: 999px; padding: 8px 18px; cursor: pointer; font-size: .85rem; }
+      .newform .hint { font-size: .72rem; color: #94a3b8; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Pilot Vitalzeichenerfassung (openEHR)</h1>
+        <div class="sub">Live-Backlog aus GitHub · HartiBS/Test · Klick auf eine Story für Details</div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </header>
+
+    <div class="toolbar">
+      <button class="primary" id="refreshBtn">Aktualisieren</button>
+      <input type="password" id="tokenInput" placeholder="Optional: Token im Browser speichern (überschreibt eingebetteten Token)" />
+      <button id="tokenBtn">Token speichern</button>
+      <button id="tokenDelBtn">Token entfernen</button>
+      <span class="status" id="status"></span>
+    </div>
+
+    <div class="banner" id="banner">
+      <div><b>Keine Verbindung zu GitHub.</b> Netzwerk oder Berechtigung prüfen – ggf. Token hinterlegen und erneut versuchen.</div>
+      <button onclick="load()">Erneut verbinden</button>
+    </div>
+
+    <div class="newform" id="newform">
+      <h2>Neue User Story anlegen</h2>
+      <div class="formgrid">
+        <label>Titel *
+          <input type="text" id="fTitle" placeholder="Als <Rolle> möchte ich <Ziel>, damit <Nutzen>" />
+        </label>
+        <label>Theme *
+          <select id="fTheme">
+            <option value="1">Onboarding und Zugriffskontrolle</option>
+            <option value="2">Patientenauswahl und Kontext</option>
+            <option value="3">Vitalzeichenerfassung</option>
+            <option value="4">openEHR-Datenhaltung</option>
+            <option value="5">Integration mit der Umgebung</option>
+          </select>
+        </label>
+        <label>Labels (mehrere wählbar)
+          <div class="labelbox" id="fLabels"></div>
+        </label>
+        <label>Übergeordnetes Issue (Sub-Issue von)
+          <select id="fParent">
+            <option value="">– kein übergeordnetes Issue –</option>
+          </select>
+        </label>
+        <label>User Story (Beschreibung)
+          <textarea id="fStory" rows="2" placeholder="Als … möchte ich …, damit …"></textarea>
+        </label>
+        <label>Akzeptanzkriterien (eine pro Zeile)
+          <textarea id="fAc" rows="4" placeholder="Kriterium 1&#10;Kriterium 2"></textarea>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="fSub" checked /> Als Sub-Issue des gewählten übergeordneten Issues verlinken
+        </label>
+        <div class="formactions">
+          <button class="primary" id="createBtn">Issue erstellen</button>
+          <span class="status" id="formStatus"></span>
+        </div>
+      </div>
+      <p class="hint">Für das Erstellen ist ein GitHub-Token mit Schreibrecht (Issues: Read and write) erforderlich – im Feld oben hinterlegen.</p>
+    </div>
+
+    <div class="controls" id="controls"></div>
+    <div class="board" id="board"></div>
+
+    <footer>
+      Datenquelle: GitHub REST API (repos/HartiBS/Test/issues) · Token kann direkt im HTML (Konstante EMBEDDED_TOKEN) oder im Token-Feld hinterlegt werden<br />
+      Eingebetteter Token gilt für jeden, der die Datei erhält – nur mit minimalen Rechten ausstatten und die Datei nicht unbegrenzt weitergeben.
+    </footer>
+
+    <div class="overlay" id="overlay">
+      <div class="modal" id="modal"></div>
+    </div>
+
+    <script>
+      // ===== Konfiguration =====
+      // Token hier eintragen (Fine-grained PAT, nur dieses Repo, minimale Rechte).
+      // Leer lassen, um stattdessen das Token-Feld im Browser zu verwenden.
+      const EMBEDDED_TOKEN = "";
+      // =========================
+
+      const OWNER = "HartiBS";
+      const REPO = "Test";
+      const API = "https://api.github.com/repos/" + OWNER + "/" + REPO + "/issues?state=all&per_page=100";
+
+      const themeByLabel = {
+        "Zugriffskontrolle": 1, "zugriffskontrolle": 1,
+        "Patientenkontext": 2, "patientenkontext": 2,
+        "Erfassung": 3, "erfassung": 3,
+        "openEHR": 4, "openehr": 4,
+        "Integration": 5, "integration": 5
+      };
+      const themes = [
+        { id: 1, name: "Onboarding und Zugriffskontrolle" },
+        { id: 2, name: "Patientenauswahl und Kontext" },
+        { id: 3, name: "Vitalzeichenerfassung" },
+        { id: 4, name: "openEHR-Datenhaltung" },
+        { id: 5, name: "Integration mit der Umgebung" }
+      ];
+
+      const board = document.getElementById("board");
+      const controls = document.getElementById("controls");
+      const kpis = document.getElementById("kpis");
+      const statusEl = document.getElementById("status");
+      const banner = document.getElementById("banner");
+      const overlay = document.getElementById("overlay");
+      const modal = document.getElementById("modal");
+      const tokenInput = document.getElementById("tokenInput");
+
+      let issues = [];
+      let filter = 0;
+
+      function getToken() { return EMBEDDED_TOKEN || localStorage.getItem("gh_token") || ""; }
+
+      function authHeaders() {
+        const t = getToken();
+        return t ? { "Authorization": "Bearer " + t, "Accept": "application/vnd.github+json" } : { "Accept": "application/vnd.github+json" };
+      }
+
+      async function load() {
+        banner.classList.remove("show");
+        statusEl.textContent = "Lade Daten…";
+        statusEl.className = "status";
+        try {
+          const res = await fetch(API, { headers: authHeaders() });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          issues = data.filter(function (i) { return !i.pull_request; });
+          const remaining = res.headers.get("x-ratelimit-remaining");
+          statusEl.textContent = "Aktualisiert: " + new Date().toLocaleTimeString("de-DE") + " · Rate-Limit verbleibend: " + (remaining !== null ? remaining : "n/a");
+          statusEl.className = "status ok";
+          renderControls();
+          renderBoard();
+          renderKpis();
+        } catch (e) {
+          banner.classList.add("show");
+          statusEl.textContent = "Fehler: " + e.message;
+          statusEl.className = "status err";
+          if (!issues.length) {
+            board.innerHTML = "<div class='banner show' style='display:flex'><div>Keine Daten geladen – nach erfolgreicher Verbindung erscheinen hier die User Stories.</div></div>";
+          }
+        }
+      }
+
+      function themeOf(issue) {
+        for (let i = 0; i < issue.labels.length; i++) {
+          const m = themeByLabel[issue.labels[i].name];
+          if (m) return m;
+        }
+        return 0;
+      }
+
+      function renderKpis() {
+        const stories = issues.filter(function (i) { return i.labels.some(function (l) { return l.name === "user-story"; }); });
+        const epics = issues.filter(function (i) { return i.labels.some(function (l) { return l.name === "epic"; }); });
+        const open = issues.filter(function (i) { return i.state === "open"; });
+        kpis.innerHTML =
+          "<div class='kpi'><b>" + epics.length + "</b><span>Epic</span></div>" +
+          "<div class='kpi'><b>" + stories.length + "</b><span>User Stories</span></div>" +
+          "<div class='kpi'><b>" + themes.filter(function (t) { return stories.some(function (s) { return themeOf(s) === t.id; }); }).length + "</b><span>Themes</span></div>" +
+          "<div class='kpi'><b>" + open.length + "</b><span>offene Issues</span></div>";
+        renderFormOptions();
+      }
+
+      function renderFormOptions() {
+        // Labels aus den Issues sammeln (API /labels optional ergänzt)
+        const labelSet = {};
+        issues.forEach(function (i) {
+          i.labels.forEach(function (l) { labelSet[l.name] = true; });
+        });
+        fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + "/labels?per_page=100", { headers: authHeaders() })
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (ls) { ls.forEach(function (l) { labelSet[l.name] = true; }); })
+          .catch(function () {})
+          .then(function () {
+            const box = document.getElementById("fLabels");
+            const prev = new Set(Array.prototype.slice.call(document.querySelectorAll("#fLabels input:checked")).map(function (c) { return c.value; }));
+            box.innerHTML = "";
+            Object.keys(labelSet).sort().forEach(function (name) {
+              const lab = document.createElement("label");
+              const cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.value = name;
+              cb.checked = prev.has(name) || name === "user-story";
+              lab.appendChild(cb);
+              lab.appendChild(document.createTextNode(" " + name));
+              if (cb.checked) lab.classList.add("on");
+              cb.onchange = function () { lab.classList.toggle("on", cb.checked); };
+              box.appendChild(lab);
+            });
+          });
+
+        // Übergeordnete Issues: Epics zuerst, danach offene Issues
+        const parentSel = document.getElementById("fParent");
+        const current = parentSel.value;
+        const epics = issues.filter(function (i) { return i.labels.some(function (l) { return l.name === "epic"; }) && i.state === "open"; });
+        parentSel.innerHTML = "<option value=\"\">– kein übergeordnetes Issue –</option>";
+        epics.forEach(function (e) {
+          const o = document.createElement("option");
+          o.value = String(e.number);
+          o.textContent = "#" + e.number + " " + e.title;
+          parentSel.appendChild(o);
+        });
+        const stories = issues.filter(function (i) { return i.state === "open" && i.labels.some(function (l) { return l.name === "user-story"; }) });
+        if (stories.length) {
+          const g = document.createElement("optgroup");
+          g.label = "User Stories";
+          stories.forEach(function (s) {
+            const o = document.createElement("option");
+            o.value = String(s.number);
+            o.textContent = "#" + s.number + " " + s.title;
+            g.appendChild(o);
+          });
+          parentSel.appendChild(g);
+        }
+        if (current) parentSel.value = current;
+      }
+
+      function renderControls() {
+        const stories = issues.filter(function (i) { return i.labels.some(function (l) { return l.name === "user-story"; }); });
+        controls.innerHTML = "";
+        const mk = function (label, id) {
+          const btn = document.createElement("button");
+          const count = id === 0 ? stories.length : stories.filter(function (s) { return themeOf(s) === id; }).length;
+          btn.textContent = label + " (" + count + ")";
+          if (filter === id) btn.classList.add("active");
+          btn.onclick = function () { filter = id; renderControls(); renderBoard(); };
+          controls.appendChild(btn);
+        };
+        mk("Alle", 0);
+        themes.forEach(function (t) { mk(t.name, t.id); });
+      }
+
+      function renderBoard() {
+        const stories = issues.filter(function (i) { return i.labels.some(function (l) { return l.name === "user-story"; }); });
+        board.innerHTML = "";
+        themes.forEach(function (th) {
+          if (filter !== 0 && filter !== th.id) return;
+          const items = stories.filter(function (s) { return themeOf(s) === th.id; });
+          const sec = document.createElement("section");
+          sec.className = "theme theme-" + th.id;
+          const h2 = document.createElement("h2");
+          h2.innerHTML = th.name + " <span class='count'>" + items.length + " Stories</span>";
+          sec.appendChild(h2);
+          const grid = document.createElement("div");
+          grid.className = "cards";
+          items.forEach(function (s) {
+            const card = document.createElement("div");
+            card.className = "card";
+            card.innerHTML =
+              "<span class='dot t" + themeOf(s) + "'></span>" +
+              "<div class='num'>#" + s.number + "</div>" +
+              "<h3>" + s.title + "</h3>" +
+              "<div class='role'>Rolle: " + (extractRole(s.body) || "–") + "</div>" +
+              "<span class='state " + s.state + "'>" + (s.state === "open" ? "offen" : "geschlossen") + "</span>";
+            card.onclick = function () { openModal(s, th); };
+            grid.appendChild(card);
+          });
+          sec.appendChild(grid);
+          board.appendChild(sec);
+        });
+      }
+
+      function extractRole(body) {
+        if (!body) return null;
+        const m = body.match(/^Als ([^ ,]+[^(]+)/i);
+        return m ? m[1].trim() : null;
+      }
+
+      function openModal(issue, th) {
+        const ac = extractSection(issue.body, "Akzeptanzkriterien") || extractSection(issue.body, "Akzeptankriterien");
+        const story = extractSection(issue.body, "User Story");
+        modal.innerHTML =
+          "<button class='close' id='closeBtn'>✕</button>" +
+          "<div class='tag'>Theme " + th.id + " · " + th.name + " · " + (issue.state === "open" ? "offen" : "geschlossen") + "</div>" +
+          "<h3>#" + issue.number + " " + issue.title + "</h3>" +
+          "<div class='meta'><a href='" + issue.html_url + "' target='_blank' rel='noopener'>Issue auf GitHub öffnen</a> · Aktualisiert: " + new Date(issue.updated_at).toLocaleString("de-DE") + "</div>" +
+          (story ? "<h4>User Story</h4><p class='story'>" + story + "</p>" : "") +
+          (ac ? "<h4>Akzeptanzkriterien</h4><ul>" + ac.map(function (a) { return "<li>" + a + "</li>"; }).join("") + "</ul>" : "") +
+          "<h4>Labels</h4><p class='story'>" + issue.labels.map(function (l) { return l.name; }).join(", ") + "</p>";
+        document.getElementById("closeBtn").onclick = closeModal;
+        overlay.classList.add("open");
+      }
+
+      function extractSection(body, heading) {
+        if (!body) return null;
+        const re = new RegExp("##+\\s*" + heading + "[^\\n]*\\n([\\s\\S]*?)(?=\\n##+\\s|\\n$|$)", "i");
+        const m = body.match(re);
+        if (!m) return null;
+        return m[1].split("\n").map(function (l) { return l.replace(/^[-*]\s*/, "").trim(); }).filter(Boolean);
+      }
+
+      function closeModal() { overlay.classList.remove("open"); }
+      overlay.onclick = function (e) { if (e.target === overlay) closeModal(); };
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+
+      document.getElementById("refreshBtn").onclick = load;
+      document.getElementById("tokenBtn").onclick = function () {
+        const v = tokenInput.value.trim();
+        if (v) { localStorage.setItem("gh_token", v); statusEl.textContent = "Token lokal gespeichert. Lade Daten…"; load(); }
+      };
+      document.getElementById("tokenDelBtn").onclick = function () {
+        localStorage.removeItem("gh_token"); tokenInput.value = ""; statusEl.textContent = "Token entfernt."; statusEl.className = "status";
+      };
+
+      tokenInput.value = getToken();
+
+      const themeLabels = {
+        1: ["Zugriffskontrolle"], 2: ["Patientenkontext"], 3: ["Erfassung"],
+        4: ["openEHR"], 5: ["Integration"]
+      };
+      const epicNumber = 1; // Epic: Pilot Vitalzeichenerfassung (openEHR)
+
+      document.getElementById("createBtn").onclick = async function () {
+        const fs = document.getElementById("formStatus");
+        fs.textContent = "Erstelle Issue…";
+        fs.className = "status";
+        const title = document.getElementById("fTitle").value.trim();
+        if (!title) { fs.textContent = "Titel ist erforderlich."; fs.className = "status err"; return; }
+        if (!getToken()) { fs.textContent = "Kein Token hinterlegt – Erstellen erfordert Schreibrechte."; fs.className = "status err"; return; }
+
+        const themeId = parseInt(document.getElementById("fTheme").value, 10);
+        const storyTxt = document.getElementById("fStory").value.trim();
+        const acLines = document.getElementById("fAc").value.split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+        const asSub = document.getElementById("fSub").checked;
+
+        let body = "";
+        if (storyTxt) body += "## User Story\n" + storyTxt + "\n\n";
+        if (acLines.length) body += "## Akzeptanzkriterien\n" + acLines.map(function (a) { return "- " + a; }).join("\n") + "\n";
+        const picked = Array.prototype.slice.call(document.querySelectorAll("#fLabels input:checked")).map(function (c) { return c.value; });
+        const labels = (picked.length ? picked : ["user-story"]).concat(themeLabels[themeId] || []);
+
+        try {
+          const res = await fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + "/issues", {
+            method: "POST",
+            headers: Object.assign(authHeaders(), { "Content-Type": "application/json" }),
+            body: JSON.stringify({ title: title, body: body, labels: labels })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(function () { return {}; });
+            throw new Error(err.message || ("HTTP " + res.status));
+          }
+          const created = await res.json();
+
+          const parentSel = document.getElementById("fParent");
+          const parentVal = parentSel.value;
+          if (asSub && parentVal) {
+            const parentNum = parseInt(parentVal, 10);
+            const parentIssue = issues.find(function (i) { return i.number === parentNum; });
+            if (parentIssue) {
+              try {
+                const subRes = await fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + "/issues/" + parentNum + "/sub_issue", {
+                  method: "POST",
+                  headers: Object.assign(authHeaders(), { "Content-Type": "application/json" }),
+                  body: JSON.stringify({ sub_issue_id: created.id })
+                });
+                if (!subRes.ok) throw new Error("HTTP " + subRes.status);
+                fs.textContent = "Issue #" + created.number + " erstellt und als Sub-Issue von #" + parentNum + " verlinkt.";
+              } catch (e2) {
+                fs.textContent = "Issue #" + created.number + " erstellt; Sub-Issue-Verlinkung fehlgeschlagen (" + e2.message + ") – manuell verlinken.";
+                fs.className = "status err";
+              }
+            } else {
+              fs.textContent = "Issue #" + created.number + " erstellt; übergeordnetes Issue nicht verlinkt.";
+            }
+          } else {
+            fs.textContent = "Issue #" + created.number + " erstellt.";
+          }
+          fs.className = "status ok";
+          document.getElementById("fTitle").value = "";
+          document.getElementById("fStory").value = "";
+          document.getElementById("fAc").value = "";
+          load();
+        } catch (e) {
+          fs.textContent = "Fehler beim Erstellen: " + e.message;
+          fs.className = "status err";
+        }
+      };
+
+      load();
+    </script>
+  </body>
+</html>
